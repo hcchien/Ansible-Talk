@@ -270,6 +270,10 @@ class ApiClient {
     });
   }
 
+  Future<Response> updateSignedPreKey(Map<String, dynamic> signedPreKey) async {
+    return _dio.put('/keys/signed-prekey', data: signedPreKey);
+  }
+
   // Sticker endpoints
   Future<Response> getStickerCatalog({int limit = 20, int offset = 0, bool? official}) async {
     return _dio.get('/stickers/catalog', queryParameters: {

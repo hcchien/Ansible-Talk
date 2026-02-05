@@ -194,6 +194,20 @@ func (s *Service) RefreshPreKeys(ctx context.Context, userID uuid.UUID, deviceID
 	return nil
 }
 
+// UpdateSignedPreKey updates a user's signed pre-key (for key rotation)
+func (s *Service) UpdateSignedPreKey(ctx context.Context, userID uuid.UUID, deviceID int, signedPreKey SignedPreKey) error {
+	_, err := s.db.Pool.Exec(ctx, `
+		INSERT INTO signal_signed_prekeys (user_id, device_id, key_id, public_key, signature)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (user_id, device_id, key_id)
+		DO UPDATE SET public_key = $4, signature = $5, updated_at = NOW()
+	`, userID, deviceID, signedPreKey.KeyID, signedPreKey.PublicKey, signedPreKey.Signature)
+	if err != nil {
+		return fmt.Errorf("failed to update signed pre-key: %w", err)
+	}
+	return nil
+}
+
 // GetUserDevices returns all devices for a user with their key info
 func (s *Service) GetUserDevices(ctx context.Context, userID uuid.UUID) ([]int, error) {
 	rows, err := s.db.Pool.Query(ctx, `

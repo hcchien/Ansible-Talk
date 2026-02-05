@@ -1,293 +1,343 @@
 import 'dart:convert';
-import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:cryptography/cryptography.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 
 import '../network/api_client.dart';
-import '../storage/local_database.dart';
 import '../storage/secure_storage.dart';
 
 /// Signal protocol client for end-to-end encryption
-/// Note: This is a simplified implementation. For production use,
-/// consider using the full libsignal_protocol_dart package.
+/// Uses the official libsignal_protocol_dart library
 class SignalClient {
   final SecureStorage _secureStorage;
-  final LocalDatabase _localDatabase;
   final ApiClient _apiClient;
 
-  // Crypto algorithms
-  final _x25519 = X25519();
-  final _aesGcm = AesGcm.with256bits();
+  // Signal protocol stores (separate stores as per library design)
+  InMemorySessionStore? _sessionStore;
+  InMemoryPreKeyStore? _preKeyStore;
+  InMemorySignedPreKeyStore? _signedPreKeyStore;
+  InMemoryIdentityKeyStore? _identityKeyStore;
 
-  SignalClient(this._secureStorage, this._localDatabase, this._apiClient);
+  IdentityKeyPair? _identityKeyPair;
+  int? _registrationId;
+  bool _isInitialized = false;
+
+  SignalClient(this._secureStorage, this._apiClient);
+
+  /// Initialize Signal protocol stores
+  Future<void> _ensureInitialized() async {
+    if (_isInitialized) return;
+
+    _identityKeyPair = await _loadOrCreateIdentityKeyPair();
+    _registrationId = await _loadOrCreateRegistrationId();
+
+    // Initialize stores
+    _sessionStore = InMemorySessionStore();
+    _preKeyStore = InMemoryPreKeyStore();
+    _signedPreKeyStore = InMemorySignedPreKeyStore();
+    _identityKeyStore = InMemoryIdentityKeyStore(_identityKeyPair!, _registrationId!);
+
+    _isInitialized = true;
+  }
+
+  /// Load or create identity key pair
+  Future<IdentityKeyPair> _loadOrCreateIdentityKeyPair() async {
+    final stored = await _secureStorage.getSignalIdentityKey();
+
+    if (stored != null && stored['private'] != null && stored['public'] != null) {
+      try {
+        final privateKey = Uint8List.fromList(stored['private']!);
+        final publicKey = Uint8List.fromList(stored['public']!);
+        return IdentityKeyPair(
+          IdentityKey(Curve.decodePoint(publicKey, 0)),
+          Curve.decodePrivatePoint(privateKey),
+        );
+      } catch (e) {
+        // If loading fails, generate new keys
+      }
+    }
+
+    // Generate new identity key pair
+    final keyPair = generateIdentityKeyPair();
+
+    // Save to secure storage
+    await _secureStorage.saveSignalIdentityKey(
+      keyPair.getPrivateKey().serialize(),
+      keyPair.getPublicKey().publicKey.serialize(),
+    );
+
+    return keyPair;
+  }
+
+  /// Load or create registration ID
+  Future<int> _loadOrCreateRegistrationId() async {
+    final stored = await _secureStorage.getSignalRegistrationId();
+    if (stored != null) {
+      return stored;
+    }
+
+    // Generate new registration ID (1-16380)
+    final registrationId = generateRegistrationId(false);
+    await _secureStorage.saveSignalRegistrationId(registrationId);
+    return registrationId;
+  }
 
   /// Initialize Signal protocol keys for a new device
   Future<void> initializeKeys() async {
-    // Check if already initialized
-    final existingKey = await _secureStorage.getSignalIdentityKey();
-    if (existingKey != null) return;
+    await _ensureInitialized();
 
-    // Generate identity key pair
-    final identityKeyPair = await _x25519.newKeyPair();
-    final identityPrivateKey = await identityKeyPair.extractPrivateKeyBytes();
-    final identityPublicKey = (await identityKeyPair.extractPublicKey()).bytes;
-
-    // Generate registration ID
-    final registrationId = Random.secure().nextInt(16383) + 1;
-
-    // Save locally
-    await _secureStorage.saveSignalIdentityKey(identityPrivateKey, identityPublicKey);
-    await _secureStorage.saveSignalRegistrationId(registrationId);
+    // Check if already registered with server
+    final existingKeys = await _secureStorage.hasSignalKeys();
+    if (existingKeys) return;
 
     // Generate signed pre-key
-    final signedPreKey = await _generateSignedPreKey(identityPrivateKey);
+    final signedPreKey = generateSignedPreKey(_identityKeyPair!, 0);
+
+    // Store signed pre-key
+    await _signedPreKeyStore!.storeSignedPreKey(signedPreKey.id, signedPreKey);
 
     // Generate one-time pre-keys
-    final preKeys = await _generatePreKeys(0, 100);
+    final preKeys = generatePreKeys(0, 100);
+    for (final preKey in preKeys) {
+      await _preKeyStore!.storePreKey(preKey.id, preKey);
+    }
 
     // Register keys with server
     await _apiClient.registerKeys({
-      'registration_id': registrationId,
-      'identity_key': base64Encode(identityPublicKey),
+      'registration_id': _registrationId,
+      'identity_key': base64Encode(
+        _identityKeyPair!.getPublicKey().publicKey.serialize(),
+      ),
       'signed_pre_key': {
-        'key_id': signedPreKey['key_id'],
-        'public_key': base64Encode(signedPreKey['public_key'] as List<int>),
-        'signature': base64Encode(signedPreKey['signature'] as List<int>),
+        'key_id': signedPreKey.id,
+        'public_key': base64Encode(signedPreKey.getKeyPair().publicKey.serialize()),
+        'signature': base64Encode(signedPreKey.signature),
       },
-      'pre_keys': preKeys.map((pk) => {
-        'key_id': pk['key_id'],
-        'public_key': base64Encode(pk['public_key'] as List<int>),
-      }).toList(),
+      'pre_keys': preKeys
+          .map((pk) => {
+                'key_id': pk.id,
+                'public_key': base64Encode(pk.getKeyPair().publicKey.serialize()),
+              })
+          .toList(),
     });
-  }
 
-  /// Generate a signed pre-key
-  Future<Map<String, dynamic>> _generateSignedPreKey(List<int> identityPrivateKey) async {
-    final keyId = Random.secure().nextInt(0xFFFFFF);
-    final keyPair = await _x25519.newKeyPair();
-    final publicKey = (await keyPair.extractPublicKey()).bytes;
-
-    // Sign with identity key
-    final signature = await _sign(Uint8List.fromList(publicKey), Uint8List.fromList(identityPrivateKey));
-
-    // Store private key locally
-    final privateKey = await keyPair.extractPrivateKeyBytes();
-    await _secureStorage.saveSignalKey('signed_prekey_$keyId', privateKey);
-
-    return {
-      'key_id': keyId,
-      'public_key': publicKey,
-      'signature': signature,
-    };
-  }
-
-  /// Generate one-time pre-keys
-  Future<List<Map<String, dynamic>>> _generatePreKeys(int start, int count) async {
-    final preKeys = <Map<String, dynamic>>[];
-
-    for (var i = start; i < start + count; i++) {
-      final keyPair = await _x25519.newKeyPair();
-      final publicKey = (await keyPair.extractPublicKey()).bytes;
-      final privateKey = await keyPair.extractPrivateKeyBytes();
-
-      // Store private key locally
-      await _secureStorage.saveSignalKey('prekey_$i', privateKey);
-
-      preKeys.add({
-        'key_id': i,
-        'public_key': publicKey,
-      });
-    }
-
-    return preKeys;
+    // Mark as initialized
+    await _secureStorage.markSignalKeysInitialized();
   }
 
   /// Encrypt a message for a recipient
-  Future<List<int>> encryptMessage(String recipientUserId, int recipientDeviceId, String plaintext) async {
-    // Get or create session
-    var sessionData = await _localDatabase.getSignalSession(recipientUserId, recipientDeviceId);
+  Future<CiphertextMessage> encryptMessage(
+    String recipientUserId,
+    int recipientDeviceId,
+    String plaintext,
+  ) async {
+    await _ensureInitialized();
 
-    if (sessionData == null) {
-      // Establish new session
-      sessionData = await _establishSession(recipientUserId, recipientDeviceId);
+    final address = SignalProtocolAddress(recipientUserId, recipientDeviceId);
+
+    // Check if we have a session, if not establish one
+    if (!await _sessionStore!.containsSession(address)) {
+      await _establishSession(recipientUserId, recipientDeviceId);
     }
 
-    // Derive message key from session
-    final messageKey = await _deriveMessageKey(sessionData);
-
-    // Encrypt with AES-GCM
-    final nonce = _aesGcm.newNonce();
-    final secretKey = SecretKey(messageKey);
-    final encrypted = await _aesGcm.encrypt(
-      utf8.encode(plaintext),
-      secretKey: secretKey,
-      nonce: nonce,
+    // Create session cipher and encrypt
+    final sessionCipher = SessionCipher(
+      _sessionStore!,
+      _preKeyStore!,
+      _signedPreKeyStore!,
+      _identityKeyStore!,
+      address,
     );
+    final ciphertext = await sessionCipher.encrypt(Uint8List.fromList(utf8.encode(plaintext)));
 
-    // Combine nonce + ciphertext + mac
-    final result = <int>[];
-    result.addAll(nonce);
-    result.addAll(encrypted.cipherText);
-    result.addAll(encrypted.mac.bytes);
-
-    // Update session
-    await _updateSession(recipientUserId, recipientDeviceId, sessionData);
-
-    return result;
+    return ciphertext;
   }
 
   /// Decrypt a message from a sender
-  Future<String> decryptMessage(String senderUserId, int senderDeviceId, List<int> ciphertext) async {
-    // Get session
-    var sessionData = await _localDatabase.getSignalSession(senderUserId, senderDeviceId);
+  Future<String> decryptMessage(
+    String senderUserId,
+    int senderDeviceId,
+    Uint8List ciphertext,
+    int messageType, // 1 = PreKeySignalMessage, 2 = SignalMessage
+  ) async {
+    await _ensureInitialized();
 
-    if (sessionData == null) {
-      throw Exception('No session found for sender');
-    }
-
-    // Extract nonce, ciphertext, and mac
-    final nonce = ciphertext.sublist(0, 12);
-    final mac = ciphertext.sublist(ciphertext.length - 16);
-    final encryptedData = ciphertext.sublist(12, ciphertext.length - 16);
-
-    // Derive message key from session
-    final messageKey = await _deriveMessageKey(sessionData);
-
-    // Decrypt
-    final secretKey = SecretKey(messageKey);
-    final decrypted = await _aesGcm.decrypt(
-      SecretBox(encryptedData, nonce: nonce, mac: Mac(mac)),
-      secretKey: secretKey,
+    final address = SignalProtocolAddress(senderUserId, senderDeviceId);
+    final sessionCipher = SessionCipher(
+      _sessionStore!,
+      _preKeyStore!,
+      _signedPreKeyStore!,
+      _identityKeyStore!,
+      address,
     );
 
-    // Update session
-    await _updateSession(senderUserId, senderDeviceId, sessionData);
+    Uint8List plaintext;
+    if (messageType == CiphertextMessage.prekeyType) {
+      // First message with pre-key
+      final preKeyMessage = PreKeySignalMessage(ciphertext);
+      plaintext = await sessionCipher.decrypt(preKeyMessage);
+    } else {
+      // Regular message
+      final signalMessage = SignalMessage.fromSerialized(ciphertext);
+      plaintext = await sessionCipher.decryptFromSignal(signalMessage);
+    }
 
-    return utf8.decode(decrypted);
+    return utf8.decode(plaintext);
   }
 
-  /// Establish a new session with a recipient
-  Future<List<int>> _establishSession(String userId, int deviceId) async {
+  /// Establish a new session with a recipient using X3DH
+  Future<void> _establishSession(String userId, int deviceId) async {
     // Fetch recipient's key bundle from server
     final response = await _apiClient.getKeyBundle(userId, deviceId);
     final bundle = response.data;
 
-    // Get our identity key
-    final identityKey = await _secureStorage.getSignalIdentityKey();
-    if (identityKey == null) {
-      throw Exception('Identity key not found');
-    }
+    // Parse the key bundle
+    final registrationId = bundle['registration_id'] as int;
+    final identityKeyBytes = base64Decode(bundle['identity_key']);
+    final signedPreKeyId = bundle['signed_pre_key']['key_id'] as int;
+    final signedPreKeyBytes = base64Decode(bundle['signed_pre_key']['public_key']);
+    final signedPreKeySignature = base64Decode(bundle['signed_pre_key']['signature']);
 
-    // Perform X3DH key agreement
-    final theirIdentityKey = base64Decode(bundle['identity_key']);
-    final theirSignedPreKey = base64Decode(bundle['signed_pre_key']['public_key']);
-    List<int>? theirPreKey;
+    ECPublicKey? preKey;
+    int? preKeyId;
     if (bundle['pre_key'] != null) {
-      theirPreKey = base64Decode(bundle['pre_key']['public_key']);
+      preKeyId = bundle['pre_key']['key_id'] as int;
+      final preKeyBytes = base64Decode(bundle['pre_key']['public_key']);
+      preKey = Curve.decodePoint(Uint8List.fromList(preKeyBytes), 0);
     }
 
-    // Generate ephemeral key pair
-    final ephemeralKeyPair = await _x25519.newKeyPair();
-    final ephemeralPrivateKey = await ephemeralKeyPair.extractPrivateKeyBytes();
-
-    // Compute shared secrets
-    final dh1 = await _dh(identityKey['private']!, theirSignedPreKey);
-    final dh2 = await _dh(ephemeralPrivateKey, theirIdentityKey);
-    final dh3 = await _dh(ephemeralPrivateKey, theirSignedPreKey);
-
-    var masterSecret = <int>[];
-    masterSecret.addAll(dh1);
-    masterSecret.addAll(dh2);
-    masterSecret.addAll(dh3);
-
-    if (theirPreKey != null) {
-      final dh4 = await _dh(ephemeralPrivateKey, theirPreKey);
-      masterSecret.addAll(dh4);
-    }
-
-    // Derive root key
-    final rootKey = await _kdf(masterSecret, 'root');
-
-    // Create session data
-    final sessionData = <int>[];
-    sessionData.addAll(rootKey);
-    sessionData.addAll((await ephemeralKeyPair.extractPublicKey()).bytes);
-
-    // Save session
-    await _localDatabase.saveSignalSession(userId, deviceId, sessionData);
-
-    return sessionData;
-  }
-
-  /// Derive message key from session data
-  Future<List<int>> _deriveMessageKey(List<int> sessionData) async {
-    final rootKey = sessionData.sublist(0, 32);
-    return _kdf(rootKey, 'message');
-  }
-
-  /// Update session after message
-  Future<void> _updateSession(String userId, int deviceId, List<int> sessionData) async {
-    // Ratchet the chain key
-    final newChainKey = await _kdf(sessionData.sublist(0, 32), 'chain');
-    final newSessionData = <int>[];
-    newSessionData.addAll(newChainKey);
-    newSessionData.addAll(sessionData.sublist(32));
-
-    await _localDatabase.saveSignalSession(userId, deviceId, newSessionData);
-  }
-
-  /// X25519 Diffie-Hellman
-  Future<List<int>> _dh(List<int> privateKey, List<int> publicKey) async {
-    final keyPair = await _x25519.newKeyPairFromSeed(privateKey);
-    final sharedKey = await _x25519.sharedSecretKey(
-      keyPair: keyPair,
-      remotePublicKey: SimplePublicKey(publicKey, type: KeyPairType.x25519),
+    // Create pre-key bundle
+    final preKeyBundle = PreKeyBundle(
+      registrationId,
+      deviceId,
+      preKeyId,
+      preKey,
+      signedPreKeyId,
+      Curve.decodePoint(Uint8List.fromList(signedPreKeyBytes), 0),
+      Uint8List.fromList(signedPreKeySignature),
+      IdentityKey(Curve.decodePoint(Uint8List.fromList(identityKeyBytes), 0)),
     );
-    return sharedKey.extractBytes();
-  }
 
-  /// Key derivation function
-  Future<List<int>> _kdf(List<int> input, String info) async {
-    final hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 32);
-    final derivedKey = await hkdf.deriveKey(
-      secretKey: SecretKey(input),
-      info: utf8.encode(info),
-      nonce: Uint8List(32),
+    // Build session using X3DH
+    final address = SignalProtocolAddress(userId, deviceId);
+    final sessionBuilder = SessionBuilder(
+      _sessionStore!,
+      _preKeyStore!,
+      _signedPreKeyStore!,
+      _identityKeyStore!,
+      address,
     );
-    return derivedKey.extractBytes();
-  }
-
-  /// Sign data with private key (simplified Ed25519-like signature)
-  Future<List<int>> _sign(Uint8List data, Uint8List privateKey) async {
-    // In production, use proper Ed25519 signing
-    // This is a simplified HMAC-based signature for demo
-    final hmac = Hmac.sha512();
-    final mac = await hmac.calculateMac(data, secretKey: SecretKey(privateKey));
-    return mac.bytes;
+    await sessionBuilder.processPreKeyBundle(preKeyBundle);
   }
 
   /// Check and refresh pre-keys if needed
   Future<void> checkPreKeyCount(int deviceId) async {
+    await _ensureInitialized();
+
     final response = await _apiClient.getPreKeyCount(deviceId);
     final count = response.data['count'] as int;
 
     if (count < 20) {
-      // Generate more pre-keys
-      final newPreKeys = await _generatePreKeys(count, 100);
-      await _apiClient.refreshPreKeys(deviceId, newPreKeys.map((pk) => {
-        'key_id': pk['key_id'],
-        'public_key': base64Encode(pk['public_key'] as List<int>),
-      }).toList());
+      // Generate more pre-keys starting from current max + 1
+      final currentMaxId = await _getMaxPreKeyId();
+      final newPreKeys = generatePreKeys(currentMaxId + 1, 100);
+
+      for (final preKey in newPreKeys) {
+        await _preKeyStore!.storePreKey(preKey.id, preKey);
+      }
+
+      await _apiClient.refreshPreKeys(
+        deviceId,
+        newPreKeys
+            .map((pk) => {
+                  'key_id': pk.id,
+                  'public_key': base64Encode(pk.getKeyPair().publicKey.serialize()),
+                })
+            .toList(),
+      );
     }
+  }
+
+  /// Rotate signed pre-key (should be done periodically)
+  Future<void> rotateSignedPreKey() async {
+    await _ensureInitialized();
+
+    final currentMaxId = await _getMaxSignedPreKeyId();
+    final newSignedPreKey = generateSignedPreKey(
+      _identityKeyPair!,
+      currentMaxId + 1,
+    );
+
+    await _signedPreKeyStore!.storeSignedPreKey(newSignedPreKey.id, newSignedPreKey);
+
+    // Update on server
+    await _apiClient.updateSignedPreKey({
+      'key_id': newSignedPreKey.id,
+      'public_key': base64Encode(newSignedPreKey.getKeyPair().publicKey.serialize()),
+      'signature': base64Encode(newSignedPreKey.signature),
+    });
+  }
+
+  Future<int> _getMaxPreKeyId() async {
+    // For simplicity, track in secure storage or return a default
+    // In production, you'd track this properly
+    return 100;
+  }
+
+  Future<int> _getMaxSignedPreKeyId() async {
+    // For simplicity, track in secure storage or return a default
+    return 0;
+  }
+
+  /// Get the identity public key for display/verification
+  Future<String> getIdentityPublicKey() async {
+    await _ensureInitialized();
+    return base64Encode(
+      _identityKeyPair!.getPublicKey().publicKey.serialize(),
+    );
+  }
+
+  /// Verify a contact's identity key fingerprint
+  Future<bool> verifyIdentityKey(String userId, int deviceId, String expectedKeyBase64) async {
+    await _ensureInitialized();
+
+    final address = SignalProtocolAddress(userId, deviceId);
+    final storedIdentity = await _identityKeyStore!.getIdentity(address);
+
+    if (storedIdentity == null) return false;
+
+    final storedKeyBase64 = base64Encode(storedIdentity.publicKey.serialize());
+    return storedKeyBase64 == expectedKeyBase64;
+  }
+
+  /// Get fingerprint for identity verification (safety numbers)
+  Future<String> getFingerprint(String localUserId, String remoteUserId, int remoteDeviceId) async {
+    await _ensureInitialized();
+
+    final remoteAddress = SignalProtocolAddress(remoteUserId, remoteDeviceId);
+    final remoteIdentity = await _identityKeyStore!.getIdentity(remoteAddress);
+
+    if (remoteIdentity == null) {
+      throw Exception('No identity found for remote user');
+    }
+
+    // Generate numeric fingerprint
+    final localFingerprint = NumericFingerprintGenerator(5200).createFor(
+      1,
+      Uint8List.fromList(utf8.encode(localUserId)),
+      _identityKeyPair!.getPublicKey(),
+      Uint8List.fromList(utf8.encode(remoteUserId)),
+      remoteIdentity,
+    );
+
+    return localFingerprint.displayableFingerprint.getDisplayText();
   }
 }
 
 // Provider
 final signalClientProvider = Provider<SignalClient>((ref) {
   final secureStorage = ref.watch(secureStorageProvider);
-  final localDatabase = ref.watch(localDatabaseProvider);
   final apiClient = ref.watch(apiClientProvider);
-  return SignalClient(secureStorage, localDatabase, apiClient);
+  return SignalClient(secureStorage, apiClient);
 });

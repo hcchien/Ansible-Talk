@@ -109,6 +109,7 @@ func (s *Server) SetupRouter() *gin.Engine {
 				keyRoutes.GET("/bundle/:user_id/:device_id", s.getKeyBundle)
 				keyRoutes.GET("/count", s.getPreKeyCount)
 				keyRoutes.POST("/prekeys", s.refreshPreKeys)
+				keyRoutes.PUT("/signed-prekey", s.updateSignedPreKey)
 			}
 
 			// Contact routes

@@ -424,6 +424,26 @@ func (s *Server) refreshPreKeys(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "pre-keys refreshed"})
 }
 
+func (s *Server) updateSignedPreKey(c *gin.Context) {
+	userID := getUserID(c)
+	deviceID := getDeviceID(c)
+	uid, _ := uuid.Parse(userID)
+	did, _ := strconv.Atoi(deviceID)
+
+	var req crypto.SignedPreKey
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := s.CryptoService.UpdateSignedPreKey(c.Request.Context(), uid, did, req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update signed pre-key"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "signed pre-key updated"})
+}
+
 // Contact handlers
 
 func (s *Server) getContacts(c *gin.Context) {
