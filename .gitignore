@@ -1,0 +1,190 @@
+# ====================
+# OS Generated Files
+# ====================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ====================
+# IDE & Editors
+# ====================
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ====================
+# Go Backend
+# ====================
+# Binaries
+backend/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Log files
+*.log
+logs/
+
+# ====================
+# Flutter / Dart
+# ====================
+# Dart/Flutter generated files
+mobile/.dart_tool/
+mobile/.packages
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.metadata
+
+# Generated code
+*.g.dart
+*.freezed.dart
+*.gr.dart
+*.config.dart
+*.mocks.dart
+
+# Pub related
+mobile/.pub-cache/
+mobile/.pub/
+mobile/pubspec.lock
+
+# iOS
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/ios/Flutter/Flutter.framework
+mobile/ios/Flutter/Flutter.podspec
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/ephemeral/
+mobile/ios/Flutter/app.flx
+mobile/ios/Flutter/app.zip
+mobile/ios/Flutter/flutter_assets/
+mobile/ios/ServiceDefinitions.json
+mobile/ios/Runner/GeneratedPluginRegistrant.*
+
+# Android
+mobile/android/.gradle/
+mobile/android/app/debug/
+mobile/android/app/profile/
+mobile/android/app/release/
+mobile/android/local.properties
+mobile/android/key.properties
+mobile/android/*.keystore
+mobile/android/*.jks
+
+# Web
+mobile/web/favicon.png
+mobile/web/icons/
+
+# macOS
+mobile/macos/Flutter/ephemeral/
+mobile/macos/Pods/
+
+# Windows
+mobile/windows/flutter/ephemeral/
+
+# Linux
+mobile/linux/flutter/ephemeral/
+
+# Coverage
+mobile/coverage/
+
+# ====================
+# Docker
+# ====================
+# Docker volumes (local development)
+docker-data/
+postgres-data/
+redis-data/
+minio-data/
+
+# ====================
+# Secrets & Credentials
+# ====================
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+credentials/
+.secrets
+config.local.yaml
+config.local.json
+
+# ====================
+# Build & Distribution
+# ====================
+dist/
+build/
+out/
+*.apk
+*.aab
+*.ipa
+*.app
+*.dmg
+*.pkg
+*.deb
+*.rpm
+
+# ====================
+# Temporary Files
+# ====================
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# ====================
+# Database
+# ====================
+*.sqlite
+*.sqlite3
+*.db
+
+# ====================
+# Misc
+# ====================
+# Node modules (if any tooling uses npm)
+node_modules/
+
+# Python virtual env (if any scripts)
+venv/
+__pycache__/
+*.pyc
