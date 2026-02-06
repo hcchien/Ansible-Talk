@@ -1,6 +1,57 @@
 version: '3.8'
 
 services:
+  # Rust Backend
+  backend:
+    build:
+      context: ./backend-rs
+      dockerfile: Dockerfile
+    container_name: ansible-talk-backend
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      ENVIRONMENT: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ansible
+      DB_PASSWORD: ansible_secret
+      DB_NAME: ansible_talk
+      DB_SSL_MODE: disable
+      DB_MAX_CONNS: 25
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_USE_SSL: "false"
+      MINIO_REGION: us-east-1
+      MINIO_PUBLIC_URL: http://localhost:9000
+      JWT_SECRET: dev-secret-change-in-production
+      JWT_ACCESS_TOKEN_TTL: 900
+      JWT_REFRESH_TOKEN_TTL: 604800
+      JWT_ISSUER: ansible-talk
+      OTP_LENGTH: 6
+      OTP_TTL: 300
+      OTP_MAX_ATTEMPTS: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
     container_name: ansible-talk-postgres
