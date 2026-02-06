@@ -10,7 +10,6 @@ This guide provides detailed instructions for setting up Ansible Talk on your de
   - [Database Setup](#database-setup)
   - [Redis Setup](#redis-setup)
   - [MinIO Setup](#minio-setup)
-  - [Go Backend Setup](#go-backend-setup)
   - [Rust Backend Setup](#rust-backend-setup)
   - [Flutter Mobile App Setup](#flutter-mobile-app-setup)
 - [Production Deployment](#production-deployment)
@@ -26,18 +25,12 @@ This guide provides detailed instructions for setting up Ansible Talk on your de
 | Docker Compose | 2.0+ | Multi-container orchestration |
 | Git | 2.30+ | Version control |
 
-### For Go Backend Development
-
-| Software | Version | Installation |
-|----------|---------|--------------|
-| Go | 1.21+ | https://golang.org/dl/ |
-
-### For Rust Backend Development
+### For Backend Development
 
 | Software | Version | Installation |
 |----------|---------|--------------|
 | Rust | 1.70+ | https://rustup.rs/ |
-| SQLx CLI | 0.7+ | `cargo install sqlx-cli` |
+| SQLx CLI | 0.8+ | `cargo install sqlx-cli --no-default-features --features postgres` |
 
 ### For Mobile Development
 
@@ -61,12 +54,11 @@ cd ansible-talk
 ### 2. Create Environment File
 
 ```bash
-# For Go backend
-cp backend/.env.example backend/.env
-
-# For Rust backend
-cp backend-rs/.env.example backend-rs/.env
+cd backend-rs
+cp .env.example .env
 ```
+
+Edit `.env` with your configuration (see [Environment Configuration](#environment-configuration) below).
 
 ### 3. Start Infrastructure Services
 
@@ -82,26 +74,23 @@ This starts:
 ### 4. Initialize the Database
 
 ```bash
-# For Go backend
-cd backend
-go run cmd/migrate/main.go up
-
-# For Rust backend
 cd backend-rs
+
+# Set DATABASE_URL for sqlx
+export DATABASE_URL="postgres://postgres:postgres@localhost:5432/ansible_talk"
+
+# Run migrations
 sqlx migrate run
 ```
 
 ### 5. Start the Backend
 
 ```bash
-# Go backend
-cd backend
-go run cmd/server/main.go
-
-# OR Rust backend
 cd backend-rs
-cargo run
+cargo run --release
 ```
+
+The server will start on http://localhost:8080
 
 ### 6. Run the Mobile App
 
@@ -141,9 +130,9 @@ Download from https://www.postgresql.org/download/windows/
 sudo -u postgres psql
 
 # Create user and database
-CREATE USER ansible WITH PASSWORD 'ansible_secret';
-CREATE DATABASE ansible_talk OWNER ansible;
-GRANT ALL PRIVILEGES ON DATABASE ansible_talk TO ansible;
+CREATE USER postgres WITH PASSWORD 'postgres';
+CREATE DATABASE ansible_talk OWNER postgres;
+GRANT ALL PRIVILEGES ON DATABASE ansible_talk TO postgres;
 
 # Exit
 \q
@@ -151,15 +140,13 @@ GRANT ALL PRIVILEGES ON DATABASE ansible_talk TO ansible;
 
 #### Run Migrations
 
-**Go Backend:**
-```bash
-cd backend
-psql -h localhost -U ansible -d ansible_talk -f migrations/001_initial_schema.sql
-```
-
-**Rust Backend:**
 ```bash
 cd backend-rs
+
+# Set DATABASE_URL
+export DATABASE_URL="postgres://postgres:postgres@localhost:5432/ansible_talk"
+
+# Run migrations
 sqlx migrate run
 ```
 
@@ -248,63 +235,6 @@ mc anonymous set download local/stickers
 mc anonymous set download local/avatars
 ```
 
-### Go Backend Setup
-
-#### 1. Install Go
-
-Download from https://golang.org/dl/ or use a package manager:
-
-```bash
-# macOS
-brew install go
-
-# Ubuntu
-sudo apt install golang-go
-```
-
-#### 2. Configure Environment
-
-```bash
-cd backend
-cp .env.example .env
-```
-
-Edit `.env` with your settings:
-```env
-SERVER_HOST=0.0.0.0
-SERVER_PORT=8080
-ENVIRONMENT=development
-
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=ansible
-DB_PASSWORD=ansible_secret
-DB_NAME=ansible_talk
-
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=minioadmin
-
-JWT_SECRET=your-super-secret-key-change-in-production
-```
-
-#### 3. Install Dependencies
-
-```bash
-go mod download
-```
-
-#### 4. Run the Server
-
-```bash
-go run cmd/server/main.go
-```
-
-The server will start on http://localhost:8080
-
 ### Rust Backend Setup
 
 #### 1. Install Rust
@@ -312,6 +242,12 @@ The server will start on http://localhost:8080
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
+```
+
+Verify installation:
+```bash
+rustc --version
+cargo --version
 ```
 
 #### 2. Install SQLx CLI
@@ -327,24 +263,91 @@ cd backend-rs
 cp .env.example .env
 ```
 
-Edit `.env` with your settings (same as Go backend).
+Edit `.env` with your settings:
 
-#### 4. Run Migrations
+```env
+# Server Configuration
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8080
+ENVIRONMENT=development
+
+# Database Configuration
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=ansible_talk
+DB_SSL_MODE=disable
+DB_MAX_CONNS=25
+
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+
+# MinIO Configuration
+MINIO_ENDPOINT=http://localhost:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_USE_SSL=false
+MINIO_REGION=us-east-1
+MINIO_PUBLIC_URL=http://localhost:9000
+
+# JWT Configuration
+JWT_SECRET=your-super-secret-key-change-in-production
+JWT_ACCESS_TOKEN_TTL=900
+JWT_REFRESH_TOKEN_TTL=604800
+JWT_ISSUER=ansible-talk
+
+# OTP Configuration
+OTP_LENGTH=6
+OTP_TTL=300
+OTP_MAX_ATTEMPTS=3
+```
+
+#### 4. Set DATABASE_URL for SQLx
 
 ```bash
+export DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+```
+
+Or add to your shell profile:
+```bash
+echo 'export DATABASE_URL="postgres://postgres:postgres@localhost:5432/ansible_talk"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+#### 5. Run Migrations
+
+```bash
+cd backend-rs
 sqlx migrate run
 ```
 
-#### 5. Build and Run
+This creates all necessary database tables with the schema defined in `migrations/`.
 
+#### 6. Build and Run
+
+**Development mode:**
 ```bash
-# Development
 cargo run
+```
 
-# Production
+**Production mode:**
+```bash
 cargo build --release
 ./target/release/server
 ```
+
+**With logging:**
+```bash
+RUST_LOG=info cargo run
+# or for debug logging
+RUST_LOG=debug cargo run
+```
+
+The server will start on http://localhost:8080
 
 ### Flutter Mobile App Setup
 
@@ -357,6 +360,8 @@ Verify installation:
 flutter doctor
 ```
 
+Ensure all checks pass (or at least the ones relevant to your target platform).
+
 #### 2. Install Dependencies
 
 ```bash
@@ -367,20 +372,26 @@ flutter pub get
 #### 3. Configure API Endpoint
 
 Edit `lib/core/network/api_client.dart`:
+
 ```dart
 static const String baseUrl = 'http://localhost:8080/api/v1';
 ```
 
-For Android emulator, use `10.0.2.2` instead of `localhost`:
+**For Android emulator**, use `10.0.2.2` instead of `localhost`:
 ```dart
 static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
 ```
 
-For iOS simulator, `localhost` works fine.
+**For iOS simulator**, `localhost` works fine.
 
-For physical devices, use your machine's local IP:
+**For physical devices**, use your machine's local IP:
 ```dart
 static const String baseUrl = 'http://192.168.1.100:8080/api/v1';
+```
+
+Similarly, update the WebSocket URL in `lib/core/network/websocket_client.dart`:
+```dart
+static const String wsUrl = 'ws://localhost:8080/api/v1/ws';
 ```
 
 #### 4. Run the App
@@ -410,17 +421,102 @@ flutter build appbundle --release
 flutter build ios --release
 ```
 
+## Environment Configuration
+
+### Complete `.env` Reference
+
+```env
+# ===================
+# Server Configuration
+# ===================
+SERVER_HOST=0.0.0.0          # Bind address
+SERVER_PORT=8080             # Server port
+ENVIRONMENT=development      # development | production
+
+# ===================
+# Database (PostgreSQL)
+# ===================
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=ansible_talk
+DB_SSL_MODE=disable          # disable | require | verify-full
+DB_MAX_CONNS=25              # Connection pool size
+
+# ===================
+# Redis
+# ===================
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=              # Leave empty for no auth
+REDIS_DB=0
+
+# ===================
+# MinIO / S3
+# ===================
+MINIO_ENDPOINT=http://localhost:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_USE_SSL=false
+MINIO_REGION=us-east-1
+MINIO_PUBLIC_URL=http://localhost:9000
+
+# Bucket names (created automatically)
+MINIO_STICKERS_BUCKET=stickers
+MINIO_AVATARS_BUCKET=avatars
+MINIO_ATTACHMENTS_BUCKET=attachments
+
+# ===================
+# JWT Authentication
+# ===================
+JWT_SECRET=change-this-to-a-secure-random-string
+JWT_ACCESS_TOKEN_TTL=900     # 15 minutes in seconds
+JWT_REFRESH_TOKEN_TTL=604800 # 7 days in seconds
+JWT_ISSUER=ansible-talk
+
+# ===================
+# OTP Configuration
+# ===================
+OTP_LENGTH=6
+OTP_TTL=300                  # 5 minutes in seconds
+OTP_MAX_ATTEMPTS=3
+
+# ===================
+# SMS (Twilio) - Optional
+# ===================
+SMS_PROVIDER=twilio
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=
+
+# ===================
+# Email (SendGrid) - Optional
+# ===================
+EMAIL_PROVIDER=sendgrid
+SENDGRID_API_KEY=
+EMAIL_FROM=noreply@yourdomain.com
+```
+
 ## Production Deployment
 
-### Environment Configuration
+### Security Checklist
 
-For production, ensure you set:
+- [ ] Use strong, randomly generated `JWT_SECRET` (256-bit)
+- [ ] Enable `DB_SSL_MODE=require` for database connections
+- [ ] Enable `MINIO_USE_SSL=true` for object storage
+- [ ] Use managed services for PostgreSQL and Redis
+- [ ] Set `ENVIRONMENT=production`
+- [ ] Configure proper firewall rules
+- [ ] Set up TLS/SSL certificates for the API
+
+### Environment Configuration (Production)
 
 ```env
 ENVIRONMENT=production
 
 # Use strong secrets
-JWT_SECRET=<generate-a-256-bit-random-key>
+JWT_SECRET=<generate-with: openssl rand -hex 32>
 
 # Enable SSL for database
 DB_SSL_MODE=require
@@ -432,41 +528,54 @@ MINIO_ENDPOINT=s3.amazonaws.com
 
 ### Database
 
-- Use managed PostgreSQL (AWS RDS, Google Cloud SQL, etc.)
+- Use managed PostgreSQL (AWS RDS, Google Cloud SQL, Azure Database)
 - Enable SSL connections
-- Configure connection pooling
+- Configure connection pooling (PgBouncer recommended)
 - Set up automated backups
+- Enable point-in-time recovery
 
 ### Redis
 
-- Use managed Redis (AWS ElastiCache, Redis Cloud, etc.)
-- Enable authentication
-- Configure persistence
+- Use managed Redis (AWS ElastiCache, Redis Cloud, Upstash)
+- Enable authentication (`REDIS_PASSWORD`)
+- Configure persistence (RDB + AOF)
+- Set up replication for high availability
 
 ### Object Storage
 
-- Use S3 or S3-compatible storage
+- Use S3 or S3-compatible storage (AWS S3, Cloudflare R2, MinIO)
 - Configure proper bucket policies
 - Enable server-side encryption
-- Set up CDN for content delivery
+- Set up CDN (CloudFront, Cloudflare) for content delivery
+- Configure CORS for web access
 
 ### Backend Deployment
 
-**Docker:**
+**Using Docker:**
 ```bash
-# Build
-docker build -t ansible-talk-backend ./backend
+# Build the image
+docker build -t ansible-talk-backend -f backend-rs/Dockerfile .
 
-# Run
+# Run the container
 docker run -d \
   --name ansible-talk \
   -p 8080:8080 \
-  --env-file .env \
+  --env-file backend-rs/.env \
   ansible-talk-backend
 ```
 
-**Kubernetes:**
-See `deploy/kubernetes/` for example manifests.
+**Example Dockerfile for Rust backend:**
+```dockerfile
+FROM rust:1.75 as builder
+WORKDIR /app
+COPY backend-rs/ .
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/server /usr/local/bin/
+CMD ["server"]
+```
 
 ### Mobile App Distribution
 
@@ -483,8 +592,14 @@ See `deploy/kubernetes/` for example manifests.
 - Verify firewall allows connections on port 5432
 
 **Error:** `authentication failed`
-- Verify username and password
+- Verify username and password in `.env`
 - Check `pg_hba.conf` for authentication method
+- Ensure the user has access to the database
+
+**Error:** `database "ansible_talk" does not exist`
+```bash
+sudo -u postgres createdb ansible_talk
+```
 
 ### Redis Connection Issues
 
@@ -492,12 +607,52 @@ See `deploy/kubernetes/` for example manifests.
 - Set `REDIS_PASSWORD` in `.env`
 - Or disable Redis authentication for development
 
+**Error:** `Connection refused`
+- Ensure Redis is running: `redis-cli ping`
+- Check host and port configuration
+
 ### MinIO Issues
 
 **Error:** `Access Denied`
 - Verify access key and secret key
 - Check bucket policies
 - Ensure buckets exist
+
+**Error:** `Bucket does not exist`
+```bash
+mc mb local/stickers
+mc mb local/avatars
+mc mb local/attachments
+```
+
+### Rust Backend Issues
+
+**Error:** `sqlx prepare failed`
+```bash
+# Ensure database is running and configured
+export DATABASE_URL="postgres://postgres:postgres@localhost/ansible_talk"
+cargo sqlx prepare
+```
+
+**Error:** `migration failed`
+```bash
+# Check migration status
+sqlx migrate info
+
+# Revert and retry
+sqlx migrate revert
+sqlx migrate run
+```
+
+**Error:** `cannot find -lpq`
+```bash
+# Install PostgreSQL development libraries
+# macOS
+brew install libpq
+
+# Ubuntu
+sudo apt install libpq-dev
+```
 
 ### Flutter Issues
 
@@ -532,23 +687,6 @@ lsof -i :8080
 kill -9 <PID>
 ```
 
-### Common Go Errors
-
-**Error:** `go.mod file not found`
-```bash
-go mod init github.com/ansible-talk/backend
-go mod tidy
-```
-
-### Common Rust Errors
-
-**Error:** `sqlx prepare failed`
-```bash
-# Ensure database is running and configured
-export DATABASE_URL="postgres://ansible:ansible_secret@localhost/ansible_talk"
-cargo sqlx prepare
-```
-
 ## Getting Help
 
 - Open an issue on GitHub
@@ -556,12 +694,39 @@ cargo sqlx prepare
 - Review the logs for error messages
 
 ```bash
-# Go backend logs
-go run cmd/server/main.go 2>&1 | tee server.log
-
-# Rust backend logs
+# Rust backend logs with debug output
 RUST_LOG=debug cargo run 2>&1 | tee server.log
 
 # Flutter logs
 flutter run --verbose
+
+# Check database logs
+tail -f /var/log/postgresql/postgresql-14-main.log
 ```
+
+## Verification
+
+After installation, verify everything works:
+
+1. **Backend health check:**
+   ```bash
+   curl http://localhost:8080/health
+   # Should return: {"status":"ok"}
+   ```
+
+2. **Database connection:**
+   ```bash
+   psql -h localhost -U postgres -d ansible_talk -c "SELECT 1"
+   ```
+
+3. **Redis connection:**
+   ```bash
+   redis-cli ping
+   # Should return: PONG
+   ```
+
+4. **MinIO connection:**
+   ```bash
+   mc ls local/
+   # Should list the buckets
+   ```

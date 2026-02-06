@@ -1,13 +1,13 @@
 # Ansible Talk
 
-A secure, end-to-end encrypted messaging application built with the Signal Protocol. Features a Flutter mobile client and dual backend implementations in Go and Rust.
+A secure, end-to-end encrypted messaging application built with the Signal Protocol. Features a Flutter mobile client and a high-performance Rust backend.
 
 ## Features
 
 - **End-to-End Encryption**: Uses the Signal Protocol (X3DH key exchange + Double Ratchet) for secure messaging
 - **Real-time Messaging**: WebSocket-based communication for instant message delivery
 - **Cross-Platform Mobile App**: Flutter-based client for iOS and Android
-- **Dual Backend Support**: Choose between Go or Rust backend implementations
+- **High-Performance Backend**: Built with Rust and Axum for speed and safety
 - **Rich Messaging**: Text, images, videos, audio, files, and stickers
 - **Group Chats**: Create and manage group conversations
 - **Contact Management**: Add, block, and organize contacts
@@ -26,22 +26,15 @@ ansible-talk/
 │   │   ├── features/      # Feature modules (auth, chat, contacts, stickers)
 │   │   └── shared/        # Shared models and widgets
 │   └── test/              # Unit and widget tests
-├── backend/               # Go backend implementation
-│   └── internal/
-│       ├── api/           # HTTP handlers and routes
-│       ├── auth/          # Authentication service
-│       ├── contacts/      # Contacts service
-│       ├── crypto/        # Signal protocol key management
-│       ├── messaging/     # Messaging service
-│       ├── stickers/      # Stickers service
-│       └── storage/       # Redis and MinIO clients
-├── backend-rs/            # Rust backend implementation
+├── backend-rs/            # Rust backend (primary)
 │   ├── src/
-│   │   ├── api/           # Axum handlers and routes
+│   │   ├── api/           # Axum handlers, middleware, router
 │   │   ├── models/        # Data models
-│   │   ├── services/      # Business logic
+│   │   ├── services/      # Business logic (auth, crypto, messaging, etc.)
 │   │   └── storage/       # Redis and MinIO clients
 │   └── migrations/        # SQLx database migrations
+├── backend/               # Go backend (legacy)
+│   └── internal/          # Go implementation
 └── docs/                  # Additional documentation
 ```
 
@@ -59,16 +52,6 @@ ansible-talk/
 | Secure Storage | flutter_secure_storage |
 | Encryption | libsignal_protocol_dart |
 
-### Backend (Go)
-| Component | Technology |
-|-----------|------------|
-| Web Framework | Gin |
-| Database | PostgreSQL (pgx) |
-| Cache | Redis (go-redis) |
-| Object Storage | MinIO |
-| WebSocket | Gorilla WebSocket |
-| Auth | JWT (golang-jwt) |
-
 ### Backend (Rust)
 | Component | Technology |
 |-----------|------------|
@@ -78,6 +61,8 @@ ansible-talk/
 | Object Storage | AWS SDK (S3-compatible) |
 | Auth | JWT (jsonwebtoken) |
 | Async Runtime | Tokio |
+| Password Hashing | bcrypt |
+| Serialization | serde |
 
 ## Quick Start
 
@@ -85,7 +70,7 @@ For detailed installation instructions, see [INSTALL.md](INSTALL.md).
 
 ### Prerequisites
 - Flutter 3.10+
-- Go 1.21+ or Rust 1.70+
+- Rust 1.70+
 - PostgreSQL 14+
 - Redis 7+
 - MinIO (or S3-compatible storage)
@@ -94,27 +79,21 @@ For detailed installation instructions, see [INSTALL.md](INSTALL.md).
 ### Using Docker (Recommended)
 
 ```bash
-# Start all services
+# Start infrastructure services
 docker-compose up -d
 
 # Run database migrations
-make migrate
+cd backend-rs
+export DATABASE_URL="postgres://postgres:postgres@localhost:5432/ansible_talk"
+sqlx migrate run
 
 # Start the backend
-make backend
+cargo run --release
 ```
 
 ### Manual Setup
 
-**1. Start the Go Backend:**
-```bash
-cd backend
-cp .env.example .env
-# Edit .env with your configuration
-go run cmd/server/main.go
-```
-
-**2. Or start the Rust Backend:**
+**1. Start the Rust Backend:**
 ```bash
 cd backend-rs
 cp .env.example .env
