@@ -26,15 +26,13 @@ ansible-talk/
 │   │   ├── features/      # Feature modules (auth, chat, contacts, stickers)
 │   │   └── shared/        # Shared models and widgets
 │   └── test/              # Unit and widget tests
-├── backend-rs/            # Rust backend (primary)
+├── backend-rs/            # Rust backend
 │   ├── src/
 │   │   ├── api/           # Axum handlers, middleware, router
 │   │   ├── models/        # Data models
 │   │   ├── services/      # Business logic (auth, crypto, messaging, etc.)
 │   │   └── storage/       # Redis and MinIO clients
 │   └── migrations/        # SQLx database migrations
-├── backend/               # Go backend (legacy)
-│   └── internal/          # Go implementation
 └── docs/                  # Additional documentation
 ```
 
@@ -213,13 +211,6 @@ Connect to `ws://localhost:8080/api/v1/ws?token=<access_token>`
 
 ## Testing
 
-### Go Backend
-```bash
-cd backend
-go test ./... -v
-go test ./... -cover  # With coverage
-```
-
 ### Rust Backend
 ```bash
 cd backend-rs
@@ -280,20 +271,6 @@ lib/
     └── widgets/            # Reusable widgets
 ```
 
-### Go Backend (`backend/`)
-```
-internal/
-├── api/                    # HTTP handlers & middleware
-├── auth/                   # Auth service & JWT
-├── config/                 # Configuration loading
-├── contacts/               # Contacts service
-├── crypto/                 # Signal key management
-├── messaging/              # Messaging & WebSocket
-├── models/                 # Data models
-├── stickers/               # Stickers service
-└── storage/                # Redis & MinIO clients
-```
-
 ### Rust Backend (`backend-rs/`)
 ```
 src/
@@ -315,7 +292,6 @@ migrations/                 # SQLx migrations
 5. Open a Pull Request
 
 ### Code Style
-- **Go**: Follow standard Go conventions, use `gofmt`
 - **Rust**: Follow Rust conventions, use `rustfmt`
 - **Dart/Flutter**: Follow Dart style guide, use `dart format`
 
@@ -327,4 +303,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [Signal Protocol](https://signal.org/docs/) for the encryption protocol specification
 - [libsignal-protocol-dart](https://pub.dev/packages/libsignal_protocol_dart) for the Dart implementation
-- The Flutter, Go, and Rust communities for excellent tooling and libraries
+- The Flutter and Rust communities for excellent tooling and libraries
