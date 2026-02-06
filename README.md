@@ -1,158 +1,351 @@
 # Ansible Talk
 
-A secure cross-platform messenger app with end-to-end encryption based on the Signal protocol.
+A secure, end-to-end encrypted messaging application built with the Signal Protocol. Features a Flutter mobile client and dual backend implementations in Go and Rust.
 
 ## Features
 
-- **End-to-End Encryption**: Messages are encrypted using the Signal protocol
-- **Multi-Platform**: Works on iOS, Android, Web, and Desktop (via Flutter)
-- **Contact Management**: Add, edit, block contacts; sync from phone contacts
-- **Real-time Messaging**: WebSocket-based instant messaging with delivery/read receipts
-- **Sticker Support**: Download and use sticker packs in chats
-- **Authentication**: Phone number or email authentication with OTP verification
+- **End-to-End Encryption**: Uses the Signal Protocol (X3DH key exchange + Double Ratchet) for secure messaging
+- **Real-time Messaging**: WebSocket-based communication for instant message delivery
+- **Cross-Platform Mobile App**: Flutter-based client for iOS and Android
+- **Dual Backend Support**: Choose between Go or Rust backend implementations
+- **Rich Messaging**: Text, images, videos, audio, files, and stickers
+- **Group Chats**: Create and manage group conversations
+- **Contact Management**: Add, block, and organize contacts
+- **Typing Indicators**: Real-time typing status
+- **Read Receipts**: Message delivery and read confirmations
+- **Presence System**: Online/offline/away status tracking
+- **Sticker Store**: Download and use sticker packs
 
 ## Architecture
 
 ```
-├── backend/                    # Go backend server
-│   ├── cmd/server/             # Server entry point
-│   ├── internal/
-│   │   ├── api/                # REST API & WebSocket handlers
-│   │   ├── auth/               # Authentication service
-│   │   ├── contacts/           # Contacts management
-│   │   ├── crypto/             # Signal protocol keys
-│   │   ├── messaging/          # Message handling
-│   │   ├── stickers/           # Sticker packs
-│   │   ├── storage/            # Database & Redis clients
-│   │   └── models/             # Data models
-│   └── migrations/             # Database migrations
-│
-├── mobile/                     # Flutter mobile app
+ansible-talk/
+├── mobile/                 # Flutter mobile application
 │   ├── lib/
-│   │   ├── app/                # App configuration & routing
-│   │   ├── core/               # Core services (crypto, network, storage)
-│   │   ├── features/           # Feature modules
-│   │   │   ├── auth/           # Login, register, OTP verification
-│   │   │   ├── contacts/       # Contact list & management
-│   │   │   ├── chat/           # Conversations & messaging
-│   │   │   └── stickers/       # Sticker picker & store
-│   │   └── shared/             # Shared models & widgets
-│   └── pubspec.yaml
-│
-├── docker-compose.yml          # Development infrastructure
-└── Makefile                    # Build commands
+│   │   ├── core/          # Core functionality (crypto, network, storage)
+│   │   ├── features/      # Feature modules (auth, chat, contacts, stickers)
+│   │   └── shared/        # Shared models and widgets
+│   └── test/              # Unit and widget tests
+├── backend/               # Go backend implementation
+│   └── internal/
+│       ├── api/           # HTTP handlers and routes
+│       ├── auth/          # Authentication service
+│       ├── contacts/      # Contacts service
+│       ├── crypto/        # Signal protocol key management
+│       ├── messaging/     # Messaging service
+│       ├── stickers/      # Stickers service
+│       └── storage/       # Redis and MinIO clients
+├── backend-rs/            # Rust backend implementation
+│   ├── src/
+│   │   ├── api/           # Axum handlers and routes
+│   │   ├── models/        # Data models
+│   │   ├── services/      # Business logic
+│   │   └── storage/       # Redis and MinIO clients
+│   └── migrations/        # SQLx database migrations
+└── docs/                  # Additional documentation
 ```
 
 ## Tech Stack
 
-### Backend
-- **Go** - Server implementation
-- **Gin** - HTTP framework
-- **PostgreSQL** - Primary database
-- **Redis** - Caching, sessions, pub/sub
-- **MinIO** - S3-compatible object storage for media
+### Mobile (Flutter)
+| Component | Technology |
+|-----------|------------|
+| Framework | Flutter 3.10+ |
+| State Management | Riverpod |
+| Navigation | Go Router |
+| HTTP Client | Dio |
+| WebSocket | web_socket_channel |
+| Local Database | SQLite (sqflite) |
+| Secure Storage | flutter_secure_storage |
+| Encryption | libsignal_protocol_dart |
 
-### Mobile
-- **Flutter** - Cross-platform UI
-- **Riverpod** - State management
-- **Dio** - HTTP client
-- **sqflite** - Local database
-- **libsignal_protocol_dart** - E2E encryption
+### Backend (Go)
+| Component | Technology |
+|-----------|------------|
+| Web Framework | Gin |
+| Database | PostgreSQL (pgx) |
+| Cache | Redis (go-redis) |
+| Object Storage | MinIO |
+| WebSocket | Gorilla WebSocket |
+| Auth | JWT (golang-jwt) |
 
-## Getting Started
+### Backend (Rust)
+| Component | Technology |
+|-----------|------------|
+| Web Framework | Axum |
+| Database | PostgreSQL (SQLx) |
+| Cache | Redis |
+| Object Storage | AWS SDK (S3-compatible) |
+| Auth | JWT (jsonwebtoken) |
+| Async Runtime | Tokio |
+
+## Quick Start
+
+For detailed installation instructions, see [INSTALL.md](INSTALL.md).
 
 ### Prerequisites
-
-- Docker & Docker Compose
-- Go 1.21+
 - Flutter 3.10+
+- Go 1.21+ or Rust 1.70+
+- PostgreSQL 14+
+- Redis 7+
+- MinIO (or S3-compatible storage)
+- Docker & Docker Compose (recommended)
 
-### Development Setup
+### Using Docker (Recommended)
 
-1. **Start infrastructure**:
-   ```bash
-   make dev
-   ```
-   This starts PostgreSQL, Redis, and MinIO containers.
+```bash
+# Start all services
+docker-compose up -d
 
-2. **Run database migrations**:
-   ```bash
-   cd backend
-   psql -h localhost -U ansible -d ansible_talk -f migrations/001_initial_schema.sql
-   ```
+# Run database migrations
+make migrate
 
-3. **Start the backend**:
-   ```bash
-   make backend
-   ```
-   Server runs on http://localhost:8080
+# Start the backend
+make backend
+```
 
-4. **Run the mobile app**:
-   ```bash
-   make mobile
-   ```
+### Manual Setup
 
-### Configuration
+**1. Start the Go Backend:**
+```bash
+cd backend
+cp .env.example .env
+# Edit .env with your configuration
+go run cmd/server/main.go
+```
 
-Backend configuration via environment variables:
+**2. Or start the Rust Backend:**
+```bash
+cd backend-rs
+cp .env.example .env
+# Edit .env with your configuration
+cargo run --release
+```
+
+**3. Run the Mobile App:**
+```bash
+cd mobile
+flutter pub get
+flutter run
+```
+
+## API Reference
+
+### Authentication
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/auth/otp/send` | Send OTP to phone/email |
+| POST | `/api/v1/auth/otp/verify` | Verify OTP code |
+| POST | `/api/v1/auth/register` | Register new user |
+| POST | `/api/v1/auth/login` | Login existing user |
+| POST | `/api/v1/auth/logout` | Logout and invalidate tokens |
+| POST | `/api/v1/auth/refresh` | Refresh access token |
+
+### Users
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/users/me` | Get current user profile |
+| PUT | `/api/v1/users/me` | Update profile |
+| GET | `/api/v1/users/search` | Search users by name/phone/email |
+
+### Contacts
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/contacts` | List all contacts |
+| POST | `/api/v1/contacts` | Add new contact |
+| GET | `/api/v1/contacts/:id` | Get contact details |
+| PUT | `/api/v1/contacts/:id` | Update contact |
+| DELETE | `/api/v1/contacts/:id` | Remove contact |
+| POST | `/api/v1/contacts/:id/block` | Block contact |
+| POST | `/api/v1/contacts/:id/unblock` | Unblock contact |
+| GET | `/api/v1/contacts/blocked` | List blocked contacts |
+| POST | `/api/v1/contacts/sync` | Sync phone contacts |
+
+### Conversations
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/conversations` | List conversations |
+| POST | `/api/v1/conversations/direct` | Create 1:1 conversation |
+| POST | `/api/v1/conversations/group` | Create group conversation |
+| GET | `/api/v1/conversations/:id` | Get conversation details |
+| GET | `/api/v1/conversations/:id/messages` | Get messages |
+| POST | `/api/v1/conversations/:id/messages` | Send message |
+| POST | `/api/v1/conversations/:id/typing` | Send typing indicator |
+
+### Messages
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/messages/:id/delivered` | Mark as delivered |
+| POST | `/api/v1/messages/:id/read` | Mark as read |
+| DELETE | `/api/v1/messages/:id` | Delete message |
+
+### Signal Keys
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/keys/register` | Register device keys |
+| GET | `/api/v1/keys/bundle/:userId/:deviceId` | Get key bundle |
+| GET | `/api/v1/keys/count` | Get pre-key count |
+| POST | `/api/v1/keys/prekeys` | Refresh pre-keys |
+| PUT | `/api/v1/keys/signed-prekey` | Update signed pre-key |
+
+### Stickers
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/stickers/catalog` | Browse sticker catalog |
+| GET | `/api/v1/stickers/search` | Search sticker packs |
+| GET | `/api/v1/stickers/packs/:id` | Get sticker pack |
+| POST | `/api/v1/stickers/packs/:id/download` | Download pack |
+| DELETE | `/api/v1/stickers/packs/:id` | Remove pack |
+| GET | `/api/v1/stickers/my-packs` | Get user's packs |
+| PUT | `/api/v1/stickers/my-packs/reorder` | Reorder packs |
+
+### WebSocket
+
+Connect to `ws://localhost:8080/api/v1/ws?token=<access_token>`
+
+**Message Types:**
+| Type | Direction | Description |
+|------|-----------|-------------|
+| `new_message` | Server → Client | New incoming message |
+| `typing` | Bidirectional | Typing indicator |
+| `presence` | Bidirectional | Online status update |
+| `ack` | Client → Server | Delivery/read receipt |
+| `ping` | Client → Server | Keep-alive ping |
+| `pong` | Server → Client | Keep-alive response |
+
+## Security
+
+### Signal Protocol Implementation
+- **X3DH (Extended Triple Diffie-Hellman)**: Establishes shared secrets for new sessions
+- **Double Ratchet Algorithm**: Provides forward secrecy and break-in recovery
+- **Pre-keys**: One-time pre-keys enable asynchronous session establishment
+
+### Authentication Security
+- JWT-based authentication with short-lived access tokens (15 min)
+- Refresh tokens for session management (7 days)
+- OTP verification for phone/email authentication
+- Bcrypt password hashing (when applicable)
+
+### Data Protection
+- All messages are end-to-end encrypted on the client
+- Encryption keys are generated and stored only on user devices
+- Server stores only encrypted message content
+- TLS for all network communications
+
+## Testing
+
+### Go Backend
+```bash
+cd backend
+go test ./... -v
+go test ./... -cover  # With coverage
+```
+
+### Rust Backend
+```bash
+cd backend-rs
+cargo test
+cargo test -- --nocapture  # With output
+```
+
+### Flutter App
+```bash
+cd mobile
+flutter test
+flutter test --coverage  # With coverage
+```
+
+## Configuration
+
+### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SERVER_HOST` | `0.0.0.0` | Server bind address |
 | `SERVER_PORT` | `8080` | Server port |
+| `ENVIRONMENT` | `development` | Environment (development/production) |
 | `DB_HOST` | `localhost` | PostgreSQL host |
 | `DB_PORT` | `5432` | PostgreSQL port |
-| `DB_USER` | `ansible` | Database user |
-| `DB_PASSWORD` | `ansible_secret` | Database password |
+| `DB_USER` | `postgres` | Database user |
+| `DB_PASSWORD` | `postgres` | Database password |
 | `DB_NAME` | `ansible_talk` | Database name |
 | `REDIS_HOST` | `localhost` | Redis host |
-| `JWT_SECRET` | `change-me` | JWT signing secret |
+| `REDIS_PORT` | `6379` | Redis port |
+| `JWT_SECRET` | - | JWT signing secret (required) |
+| `JWT_ACCESS_TOKEN_TTL` | `900` | Access token TTL in seconds |
+| `JWT_REFRESH_TOKEN_TTL` | `604800` | Refresh token TTL in seconds |
+| `MINIO_ENDPOINT` | `localhost:9000` | MinIO endpoint |
+| `MINIO_ACCESS_KEY` | `minioadmin` | MinIO access key |
+| `MINIO_SECRET_KEY` | `minioadmin` | MinIO secret key |
 
-## API Overview
+See `.env.example` files for complete configuration options.
 
-### Authentication
-- `POST /api/v1/auth/otp/send` - Send OTP
-- `POST /api/v1/auth/otp/verify` - Verify OTP
-- `POST /api/v1/auth/register` - Create account
-- `POST /api/v1/auth/login` - Login
-- `POST /api/v1/auth/refresh` - Refresh tokens
+## Project Structure
 
-### Contacts
-- `GET /api/v1/contacts` - List contacts
-- `POST /api/v1/contacts` - Add contact
-- `PUT /api/v1/contacts/:id` - Update contact
-- `DELETE /api/v1/contacts/:id` - Delete contact
-- `POST /api/v1/contacts/:id/block` - Block contact
+### Mobile App (`mobile/`)
+```
+lib/
+├── app/                    # App configuration
+│   └── router.dart         # Route definitions
+├── core/
+│   ├── crypto/             # Signal protocol client
+│   ├── network/            # API & WebSocket clients
+│   └── storage/            # Secure storage
+├── features/
+│   ├── auth/               # Authentication screens & providers
+│   ├── chat/               # Chat screens & providers
+│   ├── contacts/           # Contacts screens & providers
+│   └── stickers/           # Stickers screens & providers
+└── shared/
+    ├── models/             # Data models
+    └── widgets/            # Reusable widgets
+```
 
-### Conversations
-- `GET /api/v1/conversations` - List conversations
-- `POST /api/v1/conversations/direct` - Create 1:1 chat
-- `POST /api/v1/conversations/group` - Create group chat
-- `GET /api/v1/conversations/:id/messages` - Get messages
-- `POST /api/v1/conversations/:id/messages` - Send message
+### Go Backend (`backend/`)
+```
+internal/
+├── api/                    # HTTP handlers & middleware
+├── auth/                   # Auth service & JWT
+├── config/                 # Configuration loading
+├── contacts/               # Contacts service
+├── crypto/                 # Signal key management
+├── messaging/              # Messaging & WebSocket
+├── models/                 # Data models
+├── stickers/               # Stickers service
+└── storage/                # Redis & MinIO clients
+```
 
-### Stickers
-- `GET /api/v1/stickers/catalog` - Browse sticker store
-- `GET /api/v1/stickers/my-packs` - User's downloaded packs
-- `POST /api/v1/stickers/packs/:id/download` - Download pack
-- `DELETE /api/v1/stickers/packs/:id` - Remove pack
+### Rust Backend (`backend-rs/`)
+```
+src/
+├── api/                    # Handlers, middleware, router
+├── config.rs               # Configuration
+├── error.rs                # Error types
+├── models/                 # Data models
+├── services/               # Business logic
+└── storage/                # Redis & MinIO clients
+migrations/                 # SQLx migrations
+```
 
-### WebSocket
-Connect to `ws://localhost:8080/api/v1/ws?token=<access_token>`
+## Contributing
 
-Message types:
-- `new_message` - New incoming message
-- `typing` - Typing indicator
-- `presence` - User online status
-- `ack` - Delivery/read receipts
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## Security
-
-- All messages are end-to-end encrypted using the Signal protocol
-- JWT tokens for API authentication
-- OTP verification for account security
-- Session management with device tracking
+### Code Style
+- **Go**: Follow standard Go conventions, use `gofmt`
+- **Rust**: Follow Rust conventions, use `rustfmt`
+- **Dart/Flutter**: Follow Dart style guide, use `dart format`
 
 ## License
 
-MIT License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- [Signal Protocol](https://signal.org/docs/) for the encryption protocol specification
+- [libsignal-protocol-dart](https://pub.dev/packages/libsignal_protocol_dart) for the Dart implementation
+- The Flutter, Go, and Rust communities for excellent tooling and libraries
